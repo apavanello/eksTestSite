@@ -1,0 +1,14 @@
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfstate.stale-*
+terraform/tfplan-*
+*.tfplan
+
+# Kubeconfig gerado pelo módulo eks
+terraform/.kube/
+
+# Artefatos de sessão da ferramenta
+.zcode/

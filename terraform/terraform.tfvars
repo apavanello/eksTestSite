@@ -1,0 +1,11 @@
+region             = "us-east-1"
+ministack_endpoint = "http://localhost:4566"
+environment        = "local"
+resource_prefix    = "ministack"
+cluster_name       = "test-cluster"
+cluster_version      = "1.30"  # metadado — versão real do k3s é fixada pelo MiniStack (v1.31.4)
+kafka_cluster_name = "ministack-kafka"
+kafka_version      = "3.6.0"
+ecr_repositories   = ["app-api", "app-worker", "app-web"]
+argocd_enabled     = true
+karpenter_enabled  = true
