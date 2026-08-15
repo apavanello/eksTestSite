@@ -14,7 +14,10 @@ help: ## Lista os targets
 plan: ## terraform plan
 	cd $(TF_DIR) && terraform plan
 
-apply: ## terraform apply (recria tudo; use após restart do ministack)
+apply: ## terraform apply (auto-detecta emulador resetado/containers parados)
+	@./scripts/ensure-cluster-up.sh; case $$? in \
+		0|44) ;; *) exit 1 ;; \
+	esac
 	cd $(TF_DIR) && terraform apply -auto-approve
 
 fmt: ## terraform fmt + validate
@@ -158,6 +161,11 @@ down: ## Desliga os containers (estado emulado PERMANECE no serviço ministack)
 create: setup apply app-image argocd-app ## Provisiona do zero: setup + apply + imagem ECR + ArgoCD
 
 destroy: ## Destrói TODO o stack (terraform destroy; containers e recursos emulados somem)
+	@./scripts/ensure-cluster-up.sh; case $$? in \
+		0) ;; \
+		44) echo "emulador já foi apagado — estado limpo, nada a destruir."; exit 0 ;; \
+		*) exit 1 ;; \
+	esac
 	@for r in app-api app-web app-worker; do \
 		ids=$$($(AWS_ENV) aws --endpoint-url $(ENDPOINT) ecr list-images --repository-name ministack-$$r --output json 2>/dev/null | jq -c '{imageIds}'); \
 		if [ -n "$$ids" ] && [ "$$ids" != '{"imageIds":null}' ] && [ "$$ids" != '{"imageIds":[]}' ]; then \
