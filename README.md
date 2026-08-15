@@ -69,12 +69,16 @@ make test        # valida ponta a ponta
 
 | Target | O que faz |
 |---|---|
+| `make create` | provisiona do zero: setup + apply + imagem ECR + ArgoCD |
+| `make up` / `make down` | liga/desliga os containers (**estado emulado preservado**) |
+| `make destroy` | destrói todo o stack (limpa ECR antes do `terraform destroy`) |
 | `make setup` | checa pré-requisitos + patch idempotente do MiniStack |
 | `make plan` / `make apply` | ciclo Terraform |
 | `make app-image` | build/push do app de teste no ECR local |
 | `make test` | validações ponta a ponta (APIGW, ALB, app, SSM, KMS, SNS→SQS, DLQ, Kafka) |
 | `make k8s` / `make pods` | `kubectl get nodes` / `pods -A` |
 | `make argocd` | senha admin + port-forward da UI (`http://localhost:18080`) |
+| `make argocd-app` | aplica a Application do ArgoCD e mostra sync/health |
 | `make karpenter` | logs do controller |
 | `make ecr-login` | `docker login` no ECR local |
 | `make patch-ministack` | aplica o patch local do MiniStack (ver peculiaridades) |
