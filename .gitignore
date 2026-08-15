@@ -13,3 +13,6 @@ terraform/.kube/
 # Artefatos de sessão da ferramenta (config.json do workspace é versionado)
 .zcode/*
 !.zcode/config.json
+
+# Diagramas gerados via MCP (regeneráveis sob demanda)
+generated-diagrams/
