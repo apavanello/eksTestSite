@@ -5,7 +5,7 @@ ENDPOINT := http://localhost:4566
 AWS_ENV := AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
 KUBECONFIG := $(abspath $(TF_DIR)/.kube/test-cluster.yaml)
 
-.PHONY: help plan apply fmt validate k8s pods argocd karpenter test reset ecr-login kafka-topic clean-state app-image patch-ministack setup setup-check
+.PHONY: help plan apply fmt validate k8s pods argocd karpenter test reset ecr-login kafka-topic clean-state app-image patch-ministack setup setup-check up down create destroy argocd-app
 
 help: ## Lista os targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-14s %s\n", $$1, $$2}'
@@ -131,6 +131,46 @@ app-image: ecr-login ## Build/push do app de teste (traefik/whoami re-tagged) no
 	docker pull traefik/whoami:latest
 	docker tag traefik/whoami:latest localhost:4566/ministack-app-web:$(APP_IMAGE)
 	docker push localhost:4566/ministack-app-web:$(APP_IMAGE)
+
+# ── Ciclo de vida do ambiente ─────────────────────────────────────────────
+# Nome do container k3s muda com região/cluster-name; derivado do docker ps.
+K3S_CONTAINER := $(shell docker ps -a --format '{{.Names}}' 2>/dev/null | grep '^ministack-eks-' | head -1)
+
+up: ## Liga os containers (k3s + redpanda) preservando o estado emulado
+	@test -n "$(K3S_CONTAINER)" || { echo "cluster k3s não existe — rode: make create"; exit 1; }
+	docker start redpanda $(K3S_CONTAINER)
+	@set -e; echo "aguardando node ficar Ready..."; \
+	ok=0; for i in $$(seq 1 30); do \
+		KUBECONFIG=$(KUBECONFIG) kubectl get nodes --no-headers 2>/dev/null | grep -q " Ready " && { ok=1; break; }; sleep 2; \
+	done; \
+	[ $$ok -eq 1 ] || { echo "ERRO: node não ficou Ready em 60s"; exit 1; }; \
+	KUBECONFIG=$(KUBECONFIG) kubectl get nodes; \
+	export KUBECONFIG=$(KUBECONFIG) TG_ARN=$$(cd $(TF_DIR) && terraform output -json elb | jq -r .target_group) \
+		NODE_PORT=30180 ENDPOINT=$(ENDPOINT); \
+	bash $(TF_DIR)/modules/app/scripts/register_targets.sh; \
+	echo "ambiente no ar (pode demorar ~1min até os pods re-responderem)."
+
+down: ## Desliga os containers (estado emulado PERMANECE no serviço ministack)
+	@test -n "$(K3S_CONTAINER)" || { echo "cluster k3s não existe — nada a desligar"; exit 0; }
+	docker stop $(K3S_CONTAINER) redpanda
+	@echo "containers parados. Estado emulado intacto (não confundir com make reset, que APAGA tudo)."
+
+create: setup apply app-image argocd-app ## Provisiona do zero: setup + apply + imagem ECR + ArgoCD
+
+destroy: ## Destrói TODO o stack (terraform destroy; containers e recursos emulados somem)
+	@for r in app-api app-web app-worker; do \
+		ids=$$($(AWS_ENV) aws --endpoint-url $(ENDPOINT) ecr list-images --repository-name ministack-$$r --output json 2>/dev/null | jq -c '{imageIds}'); \
+		if [ -n "$$ids" ] && [ "$$ids" != '{"imageIds":null}' ] && [ "$$ids" != '{"imageIds":[]}' ]; then \
+			echo "limpando imagens de ministack-$$r"; \
+			$(AWS_ENV) aws --endpoint-url $(ENDPOINT) ecr batch-delete-image --repository-name ministack-$$r --cli-input-json "$$ids" >/dev/null; \
+		fi; \
+	done
+	cd $(TF_DIR) && terraform destroy -auto-approve
+
+argocd-app: ## Aplica a Application do ArgoCD (k8s/argocd) — requer repo no GitHub
+	KUBECONFIG=$(KUBECONFIG) kubectl apply -f k8s/argocd/app-web-application.yaml
+	@sleep 10; KUBECONFIG=$(KUBECONFIG) kubectl -n argocd get application app-web \
+		-o jsonpath='{.metadata.name}: {.status.sync.status} / {.status.health.status}{"\n"}'
 
 # ── Manutenção ───────────────────────────────────────────────────────────
 reset: ## Reinicia o ministack (APAGA todo o estado emulado; rode `make apply` depois)

@@ -3,6 +3,8 @@ resource "aws_ecr_repository" "this" {
 
   name                 = "${var.name_prefix}-${each.value}"
   image_tag_mutability = "MUTABLE"
+  # destroy precisa limpar as imagens antes de deletar o repositório
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
