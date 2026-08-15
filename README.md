@@ -140,7 +140,7 @@ Notas:
 
 ## Estrutura
 
-Documentação completa de cada pasta, módulo e script: **[docs/estrutura.md](docs/estrutura.md)** (com diagrama Mermaid e tabela dos módulos Terraform).
+Documentação completa em **[docs/](docs/README.md)**: [`conceito.md`](docs/conceito.md) (o projeto — problema, design, real vs emulado, fluxos, limitações) e [`estrutura.md`](docs/estrutura.md) (mapa do repo com diagrama Mermaid e módulos Terraform).
 
 ```
 eksTestSite/
