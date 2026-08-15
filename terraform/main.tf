@@ -127,3 +127,16 @@ module "addons" {
 
   depends_on = [module.eks, module.iam, module.messaging]
 }
+
+module "app" {
+  source = "./modules/app"
+
+  tg_arn             = module.elb.target_group_arn
+  node_port          = 30180
+  kubeconfig_path    = local.kubeconfig_path
+  endpoint           = var.ministack_endpoint
+  cluster_created_at = module.eks.cluster_created_at
+  manifests_dir      = abspath("${path.root}/../k8s/app")
+
+  depends_on = [module.eks, module.elb, module.addons]
+}

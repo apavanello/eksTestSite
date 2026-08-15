@@ -11,6 +11,11 @@ resource "aws_sqs_queue" "main" {
   message_retention_seconds  = 86400
   delay_seconds              = 0
 
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.dlq.arn
+    maxReceiveCount     = 3
+  })
+
   tags = var.common_tags
 }
 
