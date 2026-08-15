@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="620" viewBox="0 0 1200 620"
+     role="img" aria-labelledby="arch-title arch-desc">
+  <title id="arch-title">Arquitetura do eksTestSite</title>
+  <desc id="arch-desc">Terraform provisiona dois planos: um container k3s rodando ArgoCD, Karpenter e o app-web, e o emulador MiniStack em localhost:4566 com ALB, APIGW, Lambda, ECR, SNS para SQS com DLQ, KMS, SSM e Redpanda. O tráfego entra pelo ALB e alcança o app via NodePort; o k3s puxa imagens do ECR local; o Karpenter escuta a fila SQS.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8B95A5"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="620" rx="26" fill="#0B0E14"/>
+
+  <!-- ── Terraform (topo) ───────────────────────────────────── -->
+  <g id="terraform">
+    <rect x="360" y="36" width="480" height="104" rx="16" fill="#11151C" stroke="#232D3D" stroke-width="1.5"/>
+    <text x="600" y="70" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="18" letter-spacing="3" fill="#8B95A5">TERRAFORM · 11 MÓDULOS</text>
+    <text x="600" y="108" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+          font-size="26" font-weight="600" fill="#E8ECF1"><tspan font-family="ui-monospace, Menlo, monospace" fill="#FF9900">make apply</tspan> → tudo no ar</text>
+  </g>
+
+  <!-- provisiona → k3s -->
+  <path d="M 470 140 C 470 180, 380 170, 370 208" fill="none" stroke="#8B95A5" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- provisiona → MiniStack -->
+  <path d="M 730 140 C 730 180, 850 170, 860 208" fill="none" stroke="#8B95A5" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- ── Grupo k3s ──────────────────────────────────────────── -->
+  <g id="k3s-group">
+    <rect x="84" y="212" width="440" height="352" rx="16" fill="#11151C" stroke="#232D3D" stroke-width="1.5"/>
+    <rect x="84" y="212" width="440" height="4" rx="2" fill="#3FB950"/>
+
+    <text x="112" y="252" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="18" letter-spacing="3" fill="#8B95A5">EKS EMULADO</text>
+    <text x="112" y="282" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+          font-size="23" font-weight="600" fill="#E8ECF1">k3s v1.31 · container Docker</text>
+
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19">
+      <rect x="112" y="302" width="384" height="42" rx="8" fill="#0B0E14" stroke="#232D3D"/>
+      <text x="130" y="329" fill="#E8ECF1">argocd <tspan fill="#8B95A5">· gitops · 7 pods</tspan></text>
+
+      <rect x="112" y="354" width="384" height="42" rx="8" fill="#0B0E14" stroke="#232D3D"/>
+      <text x="130" y="381" fill="#E8ECF1">karpenter <tspan fill="#8B95A5">· nodepool crd</tspan></text>
+
+      <rect x="112" y="406" width="384" height="42" rx="8" fill="#0B0E14" stroke="#232D3D"/>
+      <text x="130" y="433" fill="#E8ECF1">coredns <tspan fill="#8B95A5">· nodehosts patch</tspan></text>
+
+      <rect x="112" y="458" width="384" height="42" rx="8" fill="#0B0E14" stroke="#3FB950"/>
+      <text x="130" y="485" fill="#E8ECF1">app-web ×2 <tspan fill="#8B95A5">· whoami · ECR</tspan></text>
+
+      <rect x="112" y="510" width="384" height="42" rx="8" fill="#0B0E14" stroke="#232D3D"/>
+      <text x="130" y="537" fill="#E8ECF1">service <tspan fill="#8B95A5">· nodeport 30180</tspan></text>
+    </g>
+  </g>
+
+  <!-- ── Grupo MiniStack ────────────────────────────────────── -->
+  <g id="ministack-group">
+    <rect x="676" y="212" width="440" height="352" rx="16" fill="#11151C" stroke="#232D3D" stroke-width="1.5"/>
+    <rect x="676" y="212" width="440" height="4" rx="2" fill="#FF9900"/>
+
+    <text x="704" y="252" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="18" letter-spacing="3" fill="#8B95A5">EMULADOR AWS</text>
+    <text x="704" y="282" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+          font-size="23" font-weight="600" fill="#E8ECF1">MiniStack · localhost:4566</text>
+
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19">
+      <rect x="704" y="302" width="384" height="42" rx="8" fill="#0B0E14" stroke="#FF9900"/>
+      <text x="722" y="329" fill="#E8ECF1">alb <tspan fill="#8B95A5">· /v1/* e default → app</tspan></text>
+
+      <rect x="704" y="354" width="384" height="42" rx="8" fill="#0B0E14" stroke="#232D3D"/>
+      <text x="722" y="381" fill="#E8ECF1">apigw v2 <tspan fill="#8B95A5">· lambda /v1/*</tspan></text>
+
+      <rect x="704" y="406" width="384" height="42" rx="8" fill="#0B0E14" stroke="#232D3D"/>
+      <text x="722" y="433" fill="#E8ECF1">ecr <tspan fill="#8B95A5">· app-api, web, worker</tspan></text>
+
+      <rect x="704" y="458" width="384" height="42" rx="8" fill="#0B0E14" stroke="#232D3D"/>
+      <text x="722" y="485" fill="#E8ECF1">sns → sqs → dlq <tspan fill="#8B95A5">· redrive ×3</tspan></text>
+
+      <rect x="704" y="510" width="384" height="42" rx="8" fill="#0B0E14" stroke="#232D3D"/>
+      <text x="722" y="537" fill="#E8ECF1">kms + ssm <tspan fill="#8B95A5">· redpanda :9092</tspan></text>
+    </g>
+  </g>
+
+  <!-- ── Fluxos entre os planos (rótulos curtos: detalhe fica no README) ── -->
+  <g id="flows" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#8B95A5">
+    <!-- ALB → app (NodePort) -->
+    <path d="M 672 323 C 630 323, 570 323, 528 323" fill="none" stroke="#3FB950" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="600" y="312" text-anchor="middle" fill="#3FB950">nodeport</text>
+
+    <!-- containerd → ECR (mirror) -->
+    <path d="M 528 427 C 570 427, 630 427, 672 427" fill="none" stroke="#8B95A5" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="600" y="416" text-anchor="middle">mirror</text>
+
+    <!-- Karpenter → SQS -->
+    <path d="M 528 480 C 570 480, 630 480, 672 480" fill="none" stroke="#8B95A5" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="600" y="469" text-anchor="middle">sqs poll</text>
+  </g>
+</svg>

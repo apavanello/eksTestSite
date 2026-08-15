@@ -1,88 +1,97 @@
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%"
+       alt="eksTestSite — EKS local com serviços AWS emulados, 100% Terraform, endpoint localhost:4566">
+</p>
+
 # eksTestSite
 
-Ambiente de testes **EKS** completo sobre o **MiniStack** (emulador AWS local), 100% gerenciado por Terraform.
+**Cluster EKS real (k3s em Docker) + serviços AWS emulados no `localhost:4566` — para validar fluxos ponta a ponta de plataforma sem custo e sem conta AWS.** ArgoCD, Karpenter, ALB, API Gateway, Lambda, ECR, SNS/SQS com DLQ, KMS, SSM e Kafka, tudo provisionado por Terraform e verificado por um único comando.
 
-O stack simula um cluster EKS real (k3s em container Docker) com add-ons operacionais e serviços AWS emulados, para validar fluxos ponta a ponta sem custo nem conta AWS.
+## Prova
+
+Saída real de `make test` — todas as validações são determinísticas (não dependem de timing nem competem com controllers do cluster):
+
+```
+apigw  → lambda proxy     HTTP 200
+alb    → api → lambda    HTTP 200
+alb    → app-web         HTTP 200   ← whoami servindo do ECR local
+sns    → sqs probe       received
+dlq    → redrive ×3      moved      ← mensagem estoura maxReceiveCount e cai no DLQ
+kafka  → rpk topic       OK
+```
+
+## Arquitetura
+
+<p align="center">
+  <img src="./assets/readme/architecture.svg" width="100%"
+       alt="Arquitetura: Terraform provisiona um container k3s (ArgoCD, Karpenter, CoreDNS, app-web) e o emulador MiniStack (ALB, APIGW, Lambda, ECR, SNS/SQS/DLQ, KMS, SSM, Redpanda)">
+</p>
+
+Três planos:
+
+1. **Terraform (host)** — 11 módulos; `make apply` sobe tudo.
+2. **EKS emulado** — k3s `v1.31` em container Docker, com ArgoCD (GitOps), Karpenter (NodePool), CoreDNS e o app de teste `app-web` (whoami, 2 réplicas, imagem do ECR local).
+3. **Emulador AWS (MiniStack)** — `localhost:4566`, região `us-east-1`, conta `000000000000`.
+
+Fluxos entre os planos: o tráfego HTTP entra pelo **ALB** e alcança o app via **NodePort 30180**; o containerd do k3s puxa imagens do **ECR** por um mirror (`000000000000.dkr.ecr.us-east-1.amazonaws.com` → `host.docker.internal:4566`); o **Karpenter** escuta a `ministack-queue` SQS como interruption queue.
 
 ## Stack provisionada
 
 | Camada | O que é | Como acessa |
 |---|---|---|
 | **EKS** | k3s real (`v1.31.4+k3s1`) em container Docker | `https://localhost:16443` (proxy godoxy) |
-| **ArgoCD** | 7 pods (server, controller, dex, redis, repo-server…) | `kubectl -n argocd` / senha inicial via secret |
+| **ArgoCD** | 7 pods (server, controller, dex, redis, repo-server…) | `kubectl -n argocd` / senha via secret |
 | **Karpenter** | Controller + NodePool CRD (provisioning emulado) | `kubectl -n karpenter` |
 | **API Gateway v2** | REST API + Lambda proxy | `http://<api-id>.execute-api.localhost:4566` |
 | **Lambda** | `ministack-api-proxy` (função `/v1/*`) | via APIGW ou ALB |
-| **ALB** | Listener + regra `/v1/*` → TG da API | `localhost:4566` com header `Host` |
-| **ECR** | `ministack-app-api`, `ministack-app-web`, `ministack-app-worker` | `localhost:4566/<repo>` |
-| **Kafka (MSK emulado)** | Cluster `ministack-kafka` (stub) + broker **Redpanda** real | `host.docker.internal:9092` |
-| **SNS/SQS** | Tópico `ministack-events` → fila `ministack-queue` (+ `ministack-dlq` com redrive, maxReceiveCount=3) | `localhost:4566` |
-| **App de teste** | `app-web` (whoami) do ECR local, 2 réplicas + Service NodePort | via ALB (`/`) ou `kubectl -n app` |
-| **KMS** | Chave simétrica `ministack` | `localhost:4566` |
-| **SSM** | Parâmetros `/ministack/app/*` | `localhost:4566` |
+| **ALB** | `/v1/*` → APIGW · default → `app-web` | `localhost:4566` com header `Host` |
+| **App de teste** | `app-web` (whoami) do ECR local, 2 réplicas | via ALB (`/`) ou `kubectl -n app` |
+| **ECR** | `app-api`, `app-web`, `app-worker` | `localhost:4566/<repo>` |
+| **Kafka (MSK emulado)** | Cluster stub + broker **Redpanda** real | `host.docker.internal:9092` |
+| **SNS/SQS** | `ministack-events` → `ministack-queue` → `ministack-dlq` (redrive, maxReceiveCount 3) | `localhost:4566` |
+| **KMS / SSM** | Chave simétrica + parâmetros `/ministack/app/*` | `localhost:4566` |
 | **IAM/Networking** | Roles, VPC, subnets, security groups emulados | — |
 
-Endpoint do emulador: `http://localhost:4566` · Conta: `000000000000` · Região: `us-east-1`
+## Começar do zero
 
-## Estrutura
-
-```
-eksTestSite/
-├── k8s/
-│   ├── app/                     # manifests do app de teste (Deployment, Service NodePort)
-│   └── argocd/                  # Application do ArgoCD (substituir <REMOTE_URL>)
-├── scripts/
-│   └── patch-ministack.sh       # patch idempotente do MiniStack (shapes aws v6 no ALB)
-├── .github/workflows/ci.yml     # fmt + validate + tflint
-└── terraform/
-    ├── main.tf            # wiring dos módulos
-    ├── terraform.tfvars   # parametrização (cluster, add-ons, ECR, Kafka)
-    ├── outputs.tf         # cluster, kubeconfig, apigateway, elb, messaging, kms, ssm…
-    ├── .kube/test-cluster.yaml   # kubeconfig gerado (SEMPRE com caminho absoluto)
-    └── modules/
-        ├── networking/  iam/  kms/  ssm/  messaging/  ecr/  kafka/
-        ├── apigateway/  elb/  eks/  addons/  app/
-```
-
-## Comandos rápidos
+Pré-requisitos: `terraform`, `aws` cli, `kubectl`, `helm`, `docker`, `jq` e o **MiniStack** instalado via `pipx`.
 
 ```bash
-make setup         # bootstrap: checa pré-requisitos + aplica patch do MiniStack
-make plan          # terraform plan
-make apply         # terraform apply (recria tudo do zero)
-make app-image     # build/push do app de teste (whoami) no ECR local
-make fmt           # terraform fmt + validate
-make k8s           # kubectl get nodes,pods -A
-make argocd        # senha admin do ArgoCD + port-forward da UI (http://localhost:18080)
-make karpenter     # logs do controller Karpenter
-make test          # validações ponta a ponta (APIGW, ALB, app, SSM, KMS, SNS→SQS, DLQ, Kafka)
-make ecr-login     # docker login no ECR local (necessário antes de push de imagens)
-make patch-ministack # aplica patch local no MiniStack (idempotente)
-make reset         # reinicia o ministack (APAGA o estado emulado; rode make apply depois)
-make clean-state   # remove estado local (backup automático; mantém os 3 mais recentes)
-```
-
-## Reproduzir do zero
-
-```bash
-# 0. pré-requisitos: terraform, aws cli, kubectl, helm, docker, jq e ministack (pipx) instalados
-make setup         # valida tudo + patch do MiniStack
-make apply         # provisiona o stack (o rollout do app pode avisar — a imagem ainda não existe)
-make app-image     # push do whoami para o ECR local (pods sobem em seguida)
-make test          # valida ponta a ponta (tudo determinístico)
+make setup       # valida pré-requisitos + aplica o patch do MiniStack
+make apply       # provisiona o stack (o rollout do app avisa — imagem ainda não existe)
+make app-image   # push do whoami para o ECR local (os pods sobem em seguida)
+make test        # valida ponta a ponta
 ```
 
 > Após restart do emulador (`make reset`): `make clean-state && make apply && make app-image`.
 
+## Comandos
+
+| Target | O que faz |
+|---|---|
+| `make setup` | checa pré-requisitos + patch idempotente do MiniStack |
+| `make plan` / `make apply` | ciclo Terraform |
+| `make app-image` | build/push do app de teste no ECR local |
+| `make test` | validações ponta a ponta (APIGW, ALB, app, SSM, KMS, SNS→SQS, DLQ, Kafka) |
+| `make k8s` / `make pods` | `kubectl get nodes` / `pods -A` |
+| `make argocd` | senha admin + port-forward da UI (`http://localhost:18080`) |
+| `make karpenter` | logs do controller |
+| `make ecr-login` | `docker login` no ECR local |
+| `make patch-ministack` | aplica o patch local do MiniStack (ver peculiaridades) |
+| `make reset` | reinicia o emulador (**apaga todo o estado emulado**) |
+| `make clean-state` | remove estado Terraform local (backup; mantém os 3 últimos) |
+| `make fmt` / `make validate` | `terraform fmt` + `validate` |
+
+Kubeconfig: `export KUBECONFIG=$(pwd)/terraform/.kube/test-cluster.yaml` (a partir da raiz do repo).
+
 ### Validações manuais
 
 ```bash
+# app-web pelo ALB (o path /health do emulador tem precedência — use /)
+curl -H "Host: <lb-dns-name>" http://localhost:4566/
+
 # APIGW direto (lambda proxy)
 curl http://<api-id>.execute-api.localhost:4566/v1/hello
-# → {"message": "Hello from MiniStack Lambda", ...}
-
-# ALB → APIGW → Lambda
-curl -H "Host: <lb-dns-name>" http://localhost:4566/v1/hello
 
 # SSM
 aws --endpoint-url http://localhost:4566 ssm get-parameter \
@@ -97,31 +106,45 @@ aws --endpoint-url http://localhost:4566 kms decrypt \
   --key-id <key-id> --ciphertext-blob fileb:///tmp/ct.bin \
   --encryption-context env=test
 
-# Kafka (topic)
+# Kafka
 docker exec redpanda rpk topic create meu-topic -p 1
 ```
 
 > Credenciais falsas: `AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1`
 
-## Peculiaridades do ambiente (IMPORTANTE)
+## Estrutura
 
-1. **MiniStack não persiste estado.** Reiniciar o emulador (`systemctl --user restart ministack`) apaga TODO o estado AWS emulado **e derruba o container k3s**. Depois de qualquer restart o estado Terraform fica obsoleto (o refresh quebra no `sqs_queue_policy`): `make clean-state && make apply`.
-   - Se o apply falhar com *"cannot re-use a name that is still in use"* (release helm parcial): `helm uninstall argocd -n argocd && helm uninstall karpenter -n karpenter` e re-apply.
-2. **Kubeconfig só funciona com caminho absoluto** (o shell não persiste env entre comandos). A partir da raiz do repo:
-   `export KUBECONFIG=$(pwd)/terraform/.kube/test-cluster.yaml`
-3. **KMS via CLI**: parâmetros blob (`--ciphertext-blob`, `--plaintext` em decrypt) precisam de `fileb://` — o aws CLI re-encoda base64 e corrompe o blob.
-4. **Karpenter loga erros esperados de emulação** (`InvalidAction: DescribeInstanceTypeOfferings/DescribeSpotPriceHistory`, `Pricing GetProducts` 405). Ausência de `dial tcp`/`no such host` = saudável.
-5. **Redpanda** anuncia `172.17.0.1:9092` (não `host.docker.internal`, que não resolve no host). O bootstrap emulado (`host.docker.internal:9092`) resolve para o gateway do bridge dentro dos pods.
-6. **Patch local no MiniStack** (sobrevive até reinstalar via pipx): `_parse_conditions` em `ministack/services/alb.py` ganha suporte aos shapes novos do provider aws v6 (`PathPatternConfig`/`HostHeaderConfig`/`SourceIpConfig`) — sem isso, regras do ALB criadas via Terraform ficam com `Values: []`. **Automatizado**: `make patch-ministack` (idempotente; parte do `make setup`).
-7. **APIGW id muda a cada apply** → hostname do target do ALB é atualizado automaticamente via output (`module.apigateway.api_hostname`).
-8. **CoreDNS NodeHosts** (`host.docker.internal → gateway do bridge`) é re-patchado automaticamente via trigger `cluster_created_at` no módulo addons — necessário sempre que o cluster é recriado.
-9. **Karpenter consome a `ministack-queue`** (usada como `interruptionQueue`): mensagens de teste SNS→SQS nela somem em ~20s (poller do controller faz receive+delete). Por isso `make test-sns` e `make test-dlq` usam filas descartáveis dedicadas — determinísticos mesmo com o Karpenter rodando.
-10. **`cluster_version` no tfvars é metadado**: o emulador não implementa `UpdateClusterVersion` e a versão real do k3s é fixada pela imagem do MiniStack (`v1.31.4+k3s1`). Não alterar esse campo sem recriar o cluster do zero.
-11. **Drift eterno de `key_id` no SSM**: o emulador não persiste o KMS key-id do parâmetro, então `terraform plan` sempre mostra ~4 updates in-place (SSM `key_id`, stage do APIGW, listener rule). Inofensivo e preexistente.
-10. **Debug logs instrumentados** no ministack local (prefixo `DBG` em `/tmp/ministack.log`: `_get_q`, `_queue_by_arn`, fanout, introspecção) — resquício da investigação do item 9; inofensivos, mas reaparecem após cada restart (patch local).
+```
+eksTestSite/
+├── k8s/
+│   ├── app/                     # manifests do app (Deployment, Service NodePort)
+│   └── argocd/                  # Application do ArgoCD (repo: apavanello/eksTestSite)
+├── scripts/
+│   └── patch-ministack.sh       # patch idempotente do MiniStack
+├── assets/readme/               # hero + diagrama (SVG)
+├── .github/workflows/ci.yml     # fmt + validate + tflint
+└── terraform/
+    ├── main.tf · outputs.tf · terraform.tfvars
+    ├── .kube/test-cluster.yaml  # kubeconfig gerado
+    └── modules/                 # networking iam kms ssm messaging ecr kafka
+                                 # apigateway elb eks addons app
+```
 
-## Fase 3 (próximos passos sugeridos)
+## Peculiaridades do emulador (leia antes de depurar)
 
-- ~~Deploy de apps de teste no EKS gerenciados pelo ArgoCD~~ (feito: app-web via ECR + ALB; falta a Application do ArgoCD apontando para o remote do repo)
-- ArgoCD Application para o path `k8s/app` (manifest pronto em `k8s/argocd/` — informar a URL do remote)
-- Worker consumindo a `ministack-queue` (app-worker) publicando em Kafka.
+1. **MiniStack não persiste estado.** `systemctl --user restart ministack` apaga TODO o estado AWS emulado e derruba o k3s. Depois de restart: `make clean-state && make apply`. Se o apply falhar com *"cannot re-use a name that is still in use"*: `helm uninstall argocd -n argocd && helm uninstall karpenter -n karpenter` e re-apply.
+2. **`cluster_version` no tfvars é metadado** — o emulador não implementa `UpdateClusterVersion`; a versão real do k3s é fixada pela imagem do MiniStack (`v1.31.4+k3s1`).
+3. **KMS via CLI**: parâmetros blob (`--ciphertext-blob`, `--plaintext`) precisam de `fileb://` — o CLI re-encoda base64 e corrompe o blob.
+4. **Karpenter loga erros esperados de emulação** (`DescribeInstanceTypeOfferings`, `Pricing GetProducts` 405). Ausência de `dial tcp`/`no such host` = saudável.
+5. **Redpanda** anuncia `172.17.0.1:9092`; o bootstrap emulado (`host.docker.internal:9092`) resolve para o gateway do bridge dentro dos pods.
+6. **Patch local no MiniStack** (shapes novos do provider aws v6 no ALB) — automatizado: `make patch-ministack`. Perdido a cada reinstalação via pipx; o `make setup` reaplica.
+7. **APIGW id muda a cada apply** → hostname do target do ALB é atualizado via output automaticamente.
+8. **CoreDNS NodeHosts** é re-patchado via trigger `cluster_created_at` quando o cluster é recriado.
+9. **Karpenter consome a `ministack-queue`** (interruption queue): mensagens nela somem em ~20s. Por isso `test-sns`/`test-dlq` usam filas descartáveis dedicadas.
+10. **Drift eterno de `key_id` no SSM**: o emulador não persiste o KMS key-id, então `terraform plan` sempre mostra ~4 updates in-place. Inofensivo.
+
+## Próximos passos (Fase 3)
+
+- [ ] ArgoCD Application ativa (`k8s/argocd/` — repo já apontado, falta push + apply)
+- [ ] Worker consumindo a `ministack-queue` (app-worker) publicando no Kafka
+- [ ] Tag `v1.0.0`

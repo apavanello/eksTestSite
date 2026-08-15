@@ -1,6 +1,5 @@
 # Application do ArgoCD para o app de teste.
-# Uso: substitua <REMOTE_URL> pela URL do repo (ex.: git@github.com:user/eksTestSite.git)
-# e aplique: kubectl apply -f k8s/argocd/app-web-application.yaml
+# Aplicar (com o repo já no GitHub): kubectl apply -f k8s/argocd/app-web-application.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -9,7 +8,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: <REMOTE_URL>
+    repoURL: git@github.com:apavanello/eksTestSite.git
     targetRevision: main
     path: k8s/app
   destination:
