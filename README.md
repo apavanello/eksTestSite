@@ -140,6 +140,8 @@ Notas:
 
 ## Estrutura
 
+Documentação completa de cada pasta, módulo e script: **[docs/estrutura.md](docs/estrutura.md)** (com diagrama Mermaid e tabela dos módulos Terraform).
+
 ```
 eksTestSite/
 ├── k8s/
