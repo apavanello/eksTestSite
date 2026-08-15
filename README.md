@@ -116,6 +116,28 @@ docker exec redpanda rpk topic create meu-topic -p 1
 
 > Credenciais falsas: `AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1`
 
+## Web UI do emulador (StackPort)
+
+[StackPort](https://github.com/DaviReisVieira/stackport) é um navegador visual de recursos AWS (35+ serviços com UI dedicada) que funciona com qualquer endpoint compatível — apontado para o MiniStack, vira o console da AWS do ambiente local.
+
+```bash
+# instalar (uma vez)
+pipx install stackport
+
+# executar apontando para o emulador
+AWS_ENDPOINT_URL=http://localhost:4566 \
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_REGION=us-east-1 \
+stackport
+
+# abrir http://localhost:8080
+```
+
+Notas:
+
+- Porta e comportamento via env: `STACKPORT_PORT` (default 8080), `STACKPORT_ALLOW_WRITES=false` para modo somente-leitura
+- Alternativa Docker: `docker run -p 8080:8080 -e AWS_ENDPOINT_URL=http://host.docker.internal:4566 davireis/stackport`
+- Não confundir com o restart do emulador: o StackPort só **lê** o estado (por padrão também escreve) — se o ministack for resetado, a UI reflete o estado vazio até o próximo `make apply`
+
 ## Estrutura
 
 ```
