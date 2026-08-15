@@ -10,5 +10,6 @@ terraform/tfplan-*
 # Kubeconfig gerado pelo módulo eks
 terraform/.kube/
 
-# Artefatos de sessão da ferramenta
-.zcode/
+# Artefatos de sessão da ferramenta (config.json do workspace é versionado)
+.zcode/*
+!.zcode/config.json

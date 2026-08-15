@@ -1,0 +1,11 @@
+{
+  "mcp": {
+    "servers": {
+      "diagrams": {
+        "command": "uvx",
+        "args": ["diagrams-mcp"],
+        "env": {}
+      }
+    }
+  }
+}
