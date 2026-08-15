@@ -145,6 +145,6 @@ eksTestSite/
 
 ## Próximos passos (Fase 3)
 
-- [ ] ArgoCD Application ativa (`k8s/argocd/` — repo já apontado, falta push + apply)
+- [x] ArgoCD Application ativa (GitOps: `k8s/app` syncado via HTTPS)
 - [ ] Worker consumindo a `ministack-queue` (app-worker) publicando no Kafka
-- [ ] Tag `v1.0.0`
+- [x] Tag `v1.0.0`
