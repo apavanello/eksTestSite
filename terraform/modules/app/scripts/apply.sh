@@ -6,7 +6,13 @@ set -euo pipefail
 
 for i in $(seq 1 5); do
   if kubectl apply -f "$MANIFESTS_DIR"; then
-    kubectl -n app rollout status deploy/app-web --timeout=120s
+    # best-effort: em bootstrap fresco a imagem pode ainda não estar no ECR
+    # (ordem: make apply → make app-image); o registro no ALB segue mesmo assim.
+    if kubectl -n app rollout status deploy/app-web --timeout=60s; then
+      :
+    else
+      echo "AVISO: rollout do app-web não convergiu — rode 'make app-image' e 'make k8s' para conferir" >&2
+    fi
     exit 0
   fi
   echo "apply falhou (tentativa $i), aguardando 3s..." >&2

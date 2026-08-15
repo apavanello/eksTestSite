@@ -5,7 +5,7 @@ ENDPOINT := http://localhost:4566
 AWS_ENV := AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
 KUBECONFIG := $(abspath $(TF_DIR)/.kube/test-cluster.yaml)
 
-.PHONY: help plan apply fmt validate k8s pods argocd karpenter test reset ecr-login kafka-topic clean-state
+.PHONY: help plan apply fmt validate k8s pods argocd karpenter test reset ecr-login kafka-topic clean-state app-image patch-ministack setup setup-check
 
 help: ## Lista os targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-14s %s\n", $$1, $$2}'
@@ -43,8 +43,8 @@ karpenter: ## Logs do controller Karpenter (erros de emulação são esperados)
 	KUBECONFIG=$(KUBECONFIG) kubectl logs -n karpenter deploy/karpenter --tail=50
 
 # ── Validações ponta a ponta ─────────────────────────────────────────────
-test: ## Validações: APIGW, ALB/API, app, SSM, KMS, SNS→SQS, DLQ, Kafka
-	$(MAKE) test-apigw test-alb test-app test-ssm test-kms test-sns test-dlq test-kafka
+test: test-apigw test-alb test-app test-ssm test-kms test-sns test-dlq test-kafka ## Validações: APIGW, ALB/API, app, SSM, KMS, SNS→SQS, DLQ, Kafka
+	@echo "== make test concluído =="
 
 test-apigw: ## APIGW direto (lambda proxy /v1/hello)
 	@URL=$$(cd $(TF_DIR) && terraform output -json apigateway | jq -r .invoke_url); \
@@ -127,13 +127,27 @@ ecr-login: ## docker login no ECR local
 APP_IMAGE ?= v1
 ECR_ALIAS := 000000000000.dkr.ecr.us-east-1.amazonaws.com
 
-app-image: ## Build/push do app de teste (traefik/whoami re-tagged) no ECR local
+app-image: ecr-login ## Build/push do app de teste (traefik/whoami re-tagged) no ECR local
 	docker pull traefik/whoami:latest
 	docker tag traefik/whoami:latest localhost:4566/ministack-app-web:$(APP_IMAGE)
-	@$(MAKE) ecr-login
 	docker push localhost:4566/ministack-app-web:$(APP_IMAGE)
 
 # ── Manutenção ───────────────────────────────────────────────────────────
 reset: ## Reinicia o ministack (APAGA todo o estado emulado; rode `make apply` depois)
 	systemctl --user restart ministack
 	@echo "Estado AWS emulado zerado. Rode: make apply"
+
+patch-ministack: ## Aplica patch local no MiniStack (shapes novos do provider aws v6 no ALB) — idempotente
+	./scripts/patch-ministack.sh
+
+setup-check:
+	@set -e; \
+	for cmd in terraform aws kubectl helm docker jq; do \
+		command -v $$cmd >/dev/null || { echo "FALTA: $$cmd não está no PATH"; exit 1; }; \
+	done; \
+	command -v ministack >/dev/null || { echo "FALTA: ministack não está no PATH (instale via pipx)"; exit 1; }; \
+	systemctl --user is-active --quiet ministack || { echo "FALTA: serviço ministack não está ativo (systemctl --user start ministack)"; exit 1; }; \
+	curl -sf -o /dev/null $(ENDPOINT) || { echo "FALTA: emulador não responde em $(ENDPOINT)"; exit 1; }; \
+	echo "pré-requisitos OK"
+
+setup: setup-check patch-ministack ## Bootstrap de máquina nova: checa pré-requisitos e aplica o patch do MiniStack

@@ -8,16 +8,16 @@ locals {
 
 resource "null_resource" "apply" {
   triggers = {
-    manifests_sha          = local.manifests_sha
-    cluster_created_at     = var.cluster_created_at
+    manifests_sha      = local.manifests_sha
+    cluster_created_at = var.cluster_created_at
   }
 
   provisioner "local-exec" {
     command = "${path.module}/scripts/apply.sh"
 
     environment = {
-      KUBECONFIG     = var.kubeconfig_path
-      MANIFESTS_DIR  = var.manifests_dir
+      KUBECONFIG    = var.kubeconfig_path
+      MANIFESTS_DIR = var.manifests_dir
     }
   }
 }
